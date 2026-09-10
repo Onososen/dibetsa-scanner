@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiBETSA Delegate Scanner</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f6f8;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+      background: white;
+      padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.10);
+    }
+
+    h1 {
+      margin-bottom: 5px;
+      font-size: 28px;
+    }
+
+    h2 {
+      margin-top: 5px;
+      font-size: 20px;
+      font-weight: normal;
+    }
+
+    #exhibitorName {
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+
+    #reader {
+      width: 100%;
+      margin-top: 20px;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+
+    .manual {
+      margin-top: 30px;
+      border-top: 1px solid #ddd;
+      padding-top: 20px;
+    }
+
+    input {
+      width: 90%;
+      padding: 12px;
+      font-size: 16px;
+      margin-bottom: 10px;
+      border: 1px solid #bbb;
+      border-radius: 7px;
+    }
+
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>DiBETSA 2026</h1>
+  <h2>Scan Delegate Badge</h2>
+
+  <div id="exhibitorName"></div>
+
+  <div id="reader"></div>
+
+  <div id="status">Ready to scan</div>
+
+  <div class="manual">
+    <p>Or enter delegate email manually</p>
+
+    <input
+      type="email"
+      id="manualEmail"
+      placeholder="delegate@email.com"
+    >
+
+    <br>
+
+    <button onclick="manualLookup()">
+      Find Delegate
+    </button>
+  </div>
+
+</div>
+
+
+<script>
+
+const APPS_SCRIPT_URL =
+"https://script.google.com/macros/s/AKfycbzzRAf6Ab34ohsWS7YSZNAMvO2eFHZmNcJYZIhNnFP8qfdaXH5g_Fgber84A-xvcgfK/exec";
+
+
+const params = new URLSearchParams(window.location.search);
+
+const exhibitor =
+  params.get("exhibitor") || "DiBETSA Exhibitor";
+
+
+document.getElementById("exhibitorName").innerText =
+  "Exhibitor: " + exhibitor;
+
+
+
+let scanCompleted = false;
+
+
+function processDelegateEmail(email) {
+
+  if (scanCompleted) return;
+
+  email = email.trim();
+
+  if (!email) {
+    document.getElementById("status").innerText =
+      "No delegate information detected.";
+    return;
+  }
+
+  scanCompleted = true;
+
+  document.getElementById("status").innerText =
+    "Delegate found. Loading details...";
+
+
+  const destination =
+    APPS_SCRIPT_URL
+    + "?exhibitor=" + encodeURIComponent(exhibitor)
+    + "&email=" + encodeURIComponent(email);
+
+
+  window.location.href = destination;
+}
+
+
+
+function onScanSuccess(decodedText) {
+
+  processDelegateEmail(decodedText);
+
+}
+
+
+
+function onScanFailure(error) {
+
+  // Keep scanning silently
+
+}
+
+
+
+const scanner = new Html5QrcodeScanner(
+  "reader",
+  {
+    fps: 10,
+    qrbox: {
+      width: 250,
+      height: 250
+    },
+    rememberLastUsedCamera: true,
+    supportedScanTypes: [
+      Html5QrcodeScanType.SCAN_TYPE_CAMERA
+    ]
+  },
+  false
+);
+
+
+scanner.render(
+  onScanSuccess,
+  onScanFailure
+);
+
+
+
+function manualLookup() {
+
+  const email =
+    document.getElementById("manualEmail").value;
+
+  processDelegateEmail(email);
+
+}
+
+</script>
+
+</body>
+</html>
