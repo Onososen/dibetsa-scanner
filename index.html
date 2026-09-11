@@ -16,6 +16,7 @@
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
+
   <style>
 
     * {
@@ -181,531 +182,660 @@
 
 <script>
 
-  /*
-  ==================================================
-  SETTINGS
-  ==================================================
-  */
 
-  const APPS_SCRIPT_URL =
-    "https://script.google.com/macros/s/AKfycbzzRAf6Ab34ohsWS7YSZNAMvO2eFHZmNcJYZIhNnFP8qfdaXH5g_Fgber84A-xvcgfK/exec";
+/*
+==================================================
+SETTINGS
+==================================================
+*/
 
-  const JOTFORM_URL =
-    "https://form.jotform.com/262452140703043";
+const APPS_SCRIPT_URL =
+  "https://script.google.com/macros/s/AKfycbzzRAf6Ab34ohsWS7YSZNAMvO2eFHZmNcJYZIhNnFP8qfdaXH5g_Fgber84A-xvcgfK/exec";
 
 
-  /*
-  ==================================================
-  GET EXHIBITOR
-  ==================================================
-  */
+const JOTFORM_URL =
+  "https://form.jotform.com/262452140703043";
 
-  const pageParams =
-    new URLSearchParams(
-      window.location.search
-    );
 
-  const exhibitor =
-    pageParams.get("exhibitor") || "";
+
+/*
+==================================================
+GET EXHIBITOR
+==================================================
+*/
+
+const pageParams =
+  new URLSearchParams(
+    window.location.search
+  );
+
+
+const exhibitor =
+  pageParams.get("exhibitor") || "";
+
+
+document.getElementById(
+  "exhibitorDisplay"
+).textContent =
+  "Exhibitor: " +
+  (exhibitor || "Not specified");
+
+
+
+/*
+==================================================
+STATUS
+==================================================
+*/
+
+function setStatus(message) {
 
   document.getElementById(
-    "exhibitorDisplay"
+    "status"
   ).textContent =
-    "Exhibitor: " +
-    (exhibitor || "Not specified");
+    message;
+
+}
+
+
+
+/*
+==================================================
+LOOKUP STATE
+==================================================
+*/
+
+let lookupInProgress = false;
+
+let scanLocked = false;
+
+let jsonpScript = null;
+
+let lookupTimer = null;
+
+let requestedEmail = "";
+
+
+
+/*
+==================================================
+LOOK UP DELEGATE
+==================================================
+*/
+
+function lookupDelegate(email) {
+
+  email =
+    String(email || "")
+    .trim()
+    .toLowerCase();
+
+
+  if (!email) {
+
+    setStatus(
+      "No delegate email detected."
+    );
+
+    scanLocked = false;
+
+    return;
+
+  }
+
+
+  if (lookupInProgress) {
+    return;
+  }
+
+
+  lookupInProgress = true;
+
+  scanLocked = true;
+
+  requestedEmail = email;
+
+
+  setStatus(
+    "Looking up delegate..."
+  );
 
 
   /*
-  ==================================================
-  STATUS
-  ==================================================
-  */
+   * Remove any previous lookup script.
+   */
 
-  function setStatus(message) {
+  if (jsonpScript) {
 
-    document.getElementById(
-      "status"
-    ).textContent = message;
+    jsonpScript.remove();
+
+    jsonpScript = null;
 
   }
 
 
   /*
-  ==================================================
-  LOOKUP STATE
-  ==================================================
-  */
+   * Cancel previous timeout.
+   */
 
-  let lookupInProgress = false;
-  let scanLocked = false;
+  if (lookupTimer) {
+
+    clearTimeout(
+      lookupTimer
+    );
+
+    lookupTimer = null;
+
+  }
 
 
   /*
-  ==================================================
-  LOOK UP DELEGATE
-  ==================================================
-  */
+   * Create JSONP request.
+   *
+   * This avoids cross-origin FETCH problems
+   * between GitHub and Google Apps Script.
+   */
 
-  async function lookupDelegate(email) {
+  jsonpScript =
+    document.createElement(
+      "script"
+    );
 
-    email =
-      String(email || "")
+
+  jsonpScript.src =
+    APPS_SCRIPT_URL +
+    "?email=" +
+    encodeURIComponent(email) +
+    "&callback=handleDelegate" +
+    "&requestId=" +
+    Date.now();
+
+
+  jsonpScript.onerror =
+    function() {
+
+      lookupFailed(
+        "Unable to contact the delegate database. Please scan again."
+      );
+
+    };
+
+
+  document.body.appendChild(
+    jsonpScript
+  );
+
+
+  /*
+   * Never allow the screen to remain
+   * stuck on Looking up delegate.
+   */
+
+  lookupTimer =
+    setTimeout(
+
+      function() {
+
+        lookupFailed(
+          "Lookup took too long. Please scan again."
+        );
+
+      },
+
+      12000
+
+    );
+
+}
+
+
+
+/*
+==================================================
+GLOBAL JSONP CALLBACK
+==================================================
+
+Important:
+Apps Script calls this function directly.
+
+Using window.handleDelegate makes the callback
+available globally to the Google response.
+==================================================
+*/
+
+window.handleDelegate =
+  function(data) {
+
+
+    if (lookupTimer) {
+
+      clearTimeout(
+        lookupTimer
+      );
+
+      lookupTimer = null;
+
+    }
+
+
+    if (jsonpScript) {
+
+      jsonpScript.remove();
+
+      jsonpScript = null;
+
+    }
+
+
+    /*
+     * Delegate not found.
+     */
+
+    if (
+      !data ||
+      !data.success
+    ) {
+
+      lookupFailed(
+        data &&
+        data.message
+          ? data.message
+          : "Delegate not found."
+      );
+
+      return;
+
+    }
+
+
+    /*
+     * Confirm Google returned the
+     * same email that was scanned.
+     */
+
+    const returnedEmail =
+      String(
+        data.email || ""
+      )
       .trim()
       .toLowerCase();
 
 
-    if (!email) {
+    if (
+      returnedEmail !==
+      requestedEmail
+    ) {
 
-      setStatus(
-        "No delegate email detected."
+      lookupFailed(
+        "The lookup returned a different delegate. Please scan again."
       );
 
-      scanLocked = false;
-
       return;
+
     }
-
-
-    if (lookupInProgress) {
-      return;
-    }
-
-
-    lookupInProgress = true;
 
 
     setStatus(
-      "Looking up delegate..."
+      "Delegate found: " +
+      (
+        data.fullName ||
+        data.firstName ||
+        data.email
+      ) +
+      ". Opening lead form..."
     );
 
 
-    try {
+    openLeadForm(
+      data
+    );
 
-      /*
-      Unique request value prevents
-      any cached lookup response.
-      */
+  };
 
-      const requestId =
-        Date.now().toString() +
-        Math.random()
-        .toString(36)
-        .substring(2);
 
 
-      const lookupURL =
-        APPS_SCRIPT_URL +
-        "?email=" +
-        encodeURIComponent(email) +
-        "&requestId=" +
-        encodeURIComponent(requestId);
+/*
+==================================================
+LOOKUP FAILURE
+==================================================
+*/
 
+function lookupFailed(message) {
 
-      const response =
-        await fetch(
-          lookupURL,
-          {
-            method: "GET",
-            cache: "no-store",
-            redirect: "follow"
-          }
-        );
+  if (lookupTimer) {
 
+    clearTimeout(
+      lookupTimer
+    );
 
-      if (!response.ok) {
-
-        throw new Error(
-          "Lookup service returned " +
-          response.status
-        );
-
-      }
-
-
-      const data =
-        await response.json();
-
-
-      /*
-      Make sure returned delegate
-      actually matches the scanned email.
-      */
-
-      const returnedEmail =
-        String(
-          data.email || ""
-        )
-        .trim()
-        .toLowerCase();
-
-
-      if (!data.success) {
-
-        setStatus(
-          data.message ||
-          "Delegate not found."
-        );
-
-        lookupInProgress = false;
-        scanLocked = false;
-
-        return;
-      }
-
-
-      if (
-        returnedEmail !== email
-      ) {
-
-        throw new Error(
-          "Lookup returned the wrong delegate."
-        );
-
-      }
-
-
-      setStatus(
-        "Delegate found: " +
-        (
-          data.fullName ||
-          data.firstName ||
-          data.email
-        ) +
-        ". Opening lead form..."
-      );
-
-
-      /*
-      ==================================================
-      BUILD COMPLETELY FRESH JOTFORM URL
-      ==================================================
-      */
-
-      const jotformParams =
-        new URLSearchParams();
-
-
-      /*
-      Fresh unique value for every scan.
-
-      This helps prevent the browser/Jotform
-      from treating consecutive scans as the
-      same form session.
-      */
-
-      const freshFormId =
-        Date.now().toString() +
-        "-" +
-        Math.random()
-        .toString(36)
-        .substring(2, 10);
-
-
-      jotformParams.set(
-        "fullName[first]",
-        String(
-          data.firstName || ""
-        )
-      );
-
-
-      jotformParams.set(
-        "fullName[last]",
-        String(
-          data.lastName || ""
-        )
-      );
-
-
-      jotformParams.set(
-        "company",
-        String(
-          data.company || ""
-        )
-      );
-
-
-      jotformParams.set(
-        "jobTitle",
-        String(
-          data.jobTitle || ""
-        )
-      );
-
-
-      jotformParams.set(
-        "email",
-        String(
-          data.email || ""
-        )
-      );
-
-
-      jotformParams.set(
-        "phoneNumber",
-        String(
-          data.phoneNumber || ""
-        )
-      );
-
-
-      jotformParams.set(
-        "country",
-        String(
-          data.country || ""
-        )
-      );
-
-
-      jotformParams.set(
-        "city",
-        String(
-          data.city || ""
-        )
-      );
-
-
-      jotformParams.set(
-        "exhibitor",
-        String(
-          exhibitor || ""
-        )
-      );
-
-
-      /*
-      Cache/session breaker.
-      Jotform ignores unknown parameters,
-      but the URL becomes unique each time.
-      */
-
-      jotformParams.set(
-        "_scan",
-        freshFormId
-      );
-
-
-      const finalURL =
-        JOTFORM_URL +
-        "?" +
-        jotformParams.toString();
-
-
-      /*
-      Small delay only after we already
-      have the NEW delegate data.
-
-      This guarantees the redirect cannot
-      happen before the lookup is finished.
-      */
-
-      await new Promise(
-        resolve =>
-          setTimeout(
-            resolve,
-            350
-          )
-      );
-
-
-      window.location.replace(
-        finalURL
-      );
-
-    }
-
-    catch (error) {
-
-      console.error(
-        "Delegate lookup error:",
-        error
-      );
-
-
-      setStatus(
-        "Could not retrieve the new delegate details. Please scan again."
-      );
-
-
-      lookupInProgress = false;
-      scanLocked = false;
-
-    }
+    lookupTimer = null;
 
   }
 
 
-  /*
-  ==================================================
-  QR SCANNER
-  ==================================================
-  */
+  if (jsonpScript) {
 
-  function onScanSuccess(
-    decodedText,
-    decodedResult
+    jsonpScript.remove();
+
+    jsonpScript = null;
+
+  }
+
+
+  lookupInProgress = false;
+
+  scanLocked = false;
+
+  requestedEmail = "";
+
+
+  setStatus(
+    message
+  );
+
+}
+
+
+
+/*
+==================================================
+OPEN JOTFORM
+==================================================
+*/
+
+function openLeadForm(data) {
+
+  const jotformParams =
+    new URLSearchParams();
+
+
+  jotformParams.set(
+    "fullName[first]",
+    String(
+      data.firstName || ""
+    )
+  );
+
+
+  jotformParams.set(
+    "fullName[last]",
+    String(
+      data.lastName || ""
+    )
+  );
+
+
+  jotformParams.set(
+    "company",
+    String(
+      data.company || ""
+    )
+  );
+
+
+  jotformParams.set(
+    "jobTitle",
+    String(
+      data.jobTitle || ""
+    )
+  );
+
+
+  jotformParams.set(
+    "email",
+    String(
+      data.email || ""
+    )
+  );
+
+
+  jotformParams.set(
+    "phoneNumber",
+    String(
+      data.phoneNumber || ""
+    )
+  );
+
+
+  jotformParams.set(
+    "city",
+    String(
+      data.city || ""
+    )
+  );
+
+
+  jotformParams.set(
+    "country",
+    String(
+      data.country || ""
+    )
+  );
+
+
+  jotformParams.set(
+    "exhibitor",
+    String(
+      exhibitor || ""
+    )
+  );
+
+
+  /*
+   * Unique value for every scan.
+   */
+
+  jotformParams.set(
+    "_scan",
+    Date.now().toString()
+  );
+
+
+  const finalURL =
+    JOTFORM_URL +
+    "?" +
+    jotformParams.toString();
+
+
+  /*
+   * Go immediately to Jotform.
+   * No extra artificial delay.
+   */
+
+  window.location.replace(
+    finalURL
+  );
+
+}
+
+
+
+/*
+==================================================
+QR SCANNER
+==================================================
+*/
+
+function onScanSuccess(
+  decodedText,
+  decodedResult
+) {
+
+  if (
+    scanLocked ||
+    lookupInProgress
   ) {
 
-    if (
-      scanLocked ||
-      lookupInProgress
-    ) {
-      return;
-    }
+    return;
+
+  }
 
 
-    const scannedValue =
-      String(
-        decodedText || ""
-      )
-      .trim();
-
-
-    if (!scannedValue) {
-      return;
-    }
-
-
-    scanLocked = true;
-
-
-    setStatus(
-      "Badge scanned. Checking delegate..."
-    );
-
-
-    /*
-    Stop camera only after
-    a QR value has been captured.
-    */
-
-    Promise.resolve(
-      html5QrcodeScanner.clear()
+  const scannedValue =
+    String(
+      decodedText || ""
     )
-    .catch(
-      error => {
-        console.log(
-          "Scanner clear:",
-          error
-        );
-      }
-    );
+    .trim();
 
 
-    lookupDelegate(
-      scannedValue
-    );
-
+  if (!scannedValue) {
+    return;
   }
 
 
-  function onScanFailure(error) {
-
-    /*
-    Ignore normal QR detection failures.
-    */
-
-  }
+  scanLocked = true;
 
 
-  const html5QrcodeScanner =
-    new Html5QrcodeScanner(
+  setStatus(
+    "Badge scanned. Checking delegate..."
+  );
 
-      "reader",
 
-      {
-        fps: 10,
+  /*
+   * Keep the camera alive while the lookup runs.
+   *
+   * scanLocked prevents the same QR from
+   * triggering repeatedly.
+   *
+   * If lookup fails, we simply unlock scanning.
+   */
 
-        qrbox: {
-          width: 250,
-          height: 250
-        },
+  lookupDelegate(
+    scannedValue
+  );
 
-        rememberLastUsedCamera:
-          true,
+}
 
-        supportedScanTypes: [
-          Html5QrcodeScanType
-          .SCAN_TYPE_CAMERA
-        ]
+
+
+function onScanFailure(error) {
+
+  /*
+   * Normal camera frames that do not
+   * contain a QR code are ignored.
+   */
+
+}
+
+
+
+/*
+==================================================
+START SCANNER
+==================================================
+*/
+
+const html5QrcodeScanner =
+  new Html5QrcodeScanner(
+
+    "reader",
+
+    {
+
+      fps: 12,
+
+      qrbox: {
+        width: 250,
+        height: 250
       },
 
-      false
+      rememberLastUsedCamera:
+        true,
 
-    );
+      supportedScanTypes: [
 
+        Html5QrcodeScanType
+          .SCAN_TYPE_CAMERA
 
-  html5QrcodeScanner.render(
-    onScanSuccess,
-    onScanFailure
+      ]
+
+    },
+
+    false
+
   );
 
 
-  /*
-  ==================================================
-  MANUAL LOOKUP
-  ==================================================
-  */
-
-  function manualLookup() {
-
-    if (lookupInProgress) {
-      return;
-    }
+html5QrcodeScanner.render(
+  onScanSuccess,
+  onScanFailure
+);
 
 
-    const email =
-      document.getElementById(
-        "manualEmail"
-      )
-      .value
-      .trim();
 
+/*
+==================================================
+MANUAL EMAIL LOOKUP
+==================================================
+*/
 
-    if (!email) {
+function manualLookup() {
 
-      setStatus(
-        "Please enter the delegate email."
-      );
+  if (
+    lookupInProgress
+  ) {
 
-      return;
-    }
-
-
-    lookupDelegate(
-      email
-    );
+    return;
 
   }
 
 
-  /*
-  ==================================================
-  ENTER KEY
-  ==================================================
-  */
+  const email =
+    document.getElementById(
+      "manualEmail"
+    )
+    .value
+    .trim();
 
-  document.getElementById(
-    "manualEmail"
-  )
-  .addEventListener(
-    "keydown",
 
-    function(event) {
+  if (!email) {
 
-      if (
-        event.key === "Enter"
-      ) {
+    setStatus(
+      "Please enter the delegate email."
+    );
 
-        event.preventDefault();
+    return;
 
-        manualLookup();
+  }
 
-      }
+
+  lookupDelegate(
+    email
+  );
+
+}
+
+
+
+/*
+==================================================
+ENTER KEY
+==================================================
+*/
+
+document.getElementById(
+  "manualEmail"
+)
+.addEventListener(
+
+  "keydown",
+
+  function(event) {
+
+    if (
+      event.key === "Enter"
+    ) {
+
+      event.preventDefault();
+
+      manualLookup();
 
     }
 
-  );
+  }
+
+);
+
 
 </script>
 
