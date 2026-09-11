@@ -1,14 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>DiBETSA 2026 Delegate Scanner</title>
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>
+    DiBETSA 2026 Delegate Scanner
+  </title>
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
+
     * {
       box-sizing: border-box;
     }
@@ -117,15 +126,21 @@
       #exhibitorDisplay {
         font-size: 21px;
       }
+
     }
+
   </style>
+
 </head>
+
 
 <body>
 
 <div class="container">
 
-  <h1>DiBETSA 2026</h1>
+  <h1>
+    DiBETSA 2026
+  </h1>
 
   <div class="subtitle">
     Scan Delegate Badge
@@ -151,9 +166,13 @@
     type="email"
     id="manualEmail"
     placeholder="delegate@email.com"
+    autocomplete="off"
   >
 
-  <button onclick="manualLookup()">
+  <button
+    type="button"
+    onclick="manualLookup()"
+  >
     Find Delegate
   </button>
 
@@ -181,13 +200,13 @@
   ==================================================
   */
 
-  const params =
+  const pageParams =
     new URLSearchParams(
       window.location.search
     );
 
   const exhibitor =
-    params.get("exhibitor") || "";
+    pageParams.get("exhibitor") || "";
 
   document.getElementById(
     "exhibitorDisplay"
@@ -213,6 +232,16 @@
 
   /*
   ==================================================
+  LOOKUP STATE
+  ==================================================
+  */
+
+  let lookupInProgress = false;
+  let scanLocked = false;
+
+
+  /*
+  ==================================================
   LOOK UP DELEGATE
   ==================================================
   */
@@ -221,7 +250,9 @@
 
     email =
       String(email || "")
-      .trim();
+      .trim()
+      .toLowerCase();
+
 
     if (!email) {
 
@@ -229,8 +260,18 @@
         "No delegate email detected."
       );
 
+      scanLocked = false;
+
       return;
     }
+
+
+    if (lookupInProgress) {
+      return;
+    }
+
+
+    lookupInProgress = true;
 
 
     setStatus(
@@ -240,12 +281,24 @@
 
     try {
 
+      /*
+      Unique request value prevents
+      any cached lookup response.
+      */
+
+      const requestId =
+        Date.now().toString() +
+        Math.random()
+        .toString(36)
+        .substring(2);
+
+
       const lookupURL =
         APPS_SCRIPT_URL +
         "?email=" +
         encodeURIComponent(email) +
-        "&t=" +
-        Date.now();
+        "&requestId=" +
+        encodeURIComponent(requestId);
 
 
       const response =
@@ -253,7 +306,8 @@
           lookupURL,
           {
             method: "GET",
-            cache: "no-store"
+            cache: "no-store",
+            redirect: "follow"
           }
         );
 
@@ -272,6 +326,19 @@
         await response.json();
 
 
+      /*
+      Make sure returned delegate
+      actually matches the scanned email.
+      */
+
+      const returnedEmail =
+        String(
+          data.email || ""
+        )
+        .trim()
+        .toLowerCase();
+
+
       if (!data.success) {
 
         setStatus(
@@ -279,18 +346,38 @@
           "Delegate not found."
         );
 
+        lookupInProgress = false;
+        scanLocked = false;
+
         return;
       }
 
 
+      if (
+        returnedEmail !== email
+      ) {
+
+        throw new Error(
+          "Lookup returned the wrong delegate."
+        );
+
+      }
+
+
       setStatus(
-        "Delegate found. Opening lead form..."
+        "Delegate found: " +
+        (
+          data.fullName ||
+          data.firstName ||
+          data.email
+        ) +
+        ". Opening lead form..."
       );
 
 
       /*
       ==================================================
-      BUILD JOTFORM URL
+      BUILD COMPLETELY FRESH JOTFORM URL
       ==================================================
       */
 
@@ -298,57 +385,103 @@
         new URLSearchParams();
 
 
+      /*
+      Fresh unique value for every scan.
+
+      This helps prevent the browser/Jotform
+      from treating consecutive scans as the
+      same form session.
+      */
+
+      const freshFormId =
+        Date.now().toString() +
+        "-" +
+        Math.random()
+        .toString(36)
+        .substring(2, 10);
+
+
       jotformParams.set(
         "fullName[first]",
-        data.firstName || ""
+        String(
+          data.firstName || ""
+        )
       );
 
 
       jotformParams.set(
         "fullName[last]",
-        data.lastName || ""
+        String(
+          data.lastName || ""
+        )
       );
 
 
       jotformParams.set(
         "company",
-        data.company || ""
+        String(
+          data.company || ""
+        )
       );
 
 
       jotformParams.set(
         "jobTitle",
-        data.jobTitle || ""
+        String(
+          data.jobTitle || ""
+        )
       );
 
 
       jotformParams.set(
         "email",
-        data.email || ""
+        String(
+          data.email || ""
+        )
       );
 
 
       jotformParams.set(
         "phoneNumber",
-        data.phoneNumber || ""
+        String(
+          data.phoneNumber || ""
+        )
       );
 
 
       jotformParams.set(
         "country",
-        data.country || ""
+        String(
+          data.country || ""
+        )
       );
 
 
       jotformParams.set(
         "city",
-        data.city || ""
+        String(
+          data.city || ""
+        )
       );
 
 
       jotformParams.set(
         "exhibitor",
-        exhibitor
+        String(
+          exhibitor || ""
+        )
+      );
+
+
+      /*
+      Cache/session breaker.
+      Jotform ignores unknown parameters,
+      but the URL becomes unique each time.
+      */
+
+      jotformParams.set(
+        "_scan",
+        freshFormId
       );
 
 
@@ -359,23 +492,43 @@
 
 
       /*
-      IMPORTANT:
-      GitHub performs the redirect directly.
-      Google Apps Script does NOT redirect to Jotform.
+      Small delay only after we already
+      have the NEW delegate data.
+
+      This guarantees the redirect cannot
+      happen before the lookup is finished.
       */
 
-      window.location.href =
-        finalURL;
+      await new Promise(
+        resolve =>
+          setTimeout(
+            resolve,
+            350
+          )
+      );
+
+
+      window.location.replace(
+        finalURL
+      );
 
     }
 
     catch (error) {
 
-      console.error(error);
+      console.error(
+        "Delegate lookup error:",
+        error
+      );
+
 
       setStatus(
-        "Could not retrieve delegate details. Please try again."
+        "Could not retrieve the new delegate details. Please scan again."
       );
+
+
+      lookupInProgress = false;
+      scanLocked = false;
 
     }
 
@@ -388,15 +541,27 @@
   ==================================================
   */
 
-  let scanLocked = false;
-
-
   function onScanSuccess(
     decodedText,
     decodedResult
   ) {
 
-    if (scanLocked) {
+    if (
+      scanLocked ||
+      lookupInProgress
+    ) {
+      return;
+    }
+
+
+    const scannedValue =
+      String(
+        decodedText || ""
+      )
+      .trim();
+
+
+    if (!scannedValue) {
       return;
     }
 
@@ -404,34 +569,27 @@
     scanLocked = true;
 
 
-    const scannedValue =
-      String(decodedText || "")
-      .trim();
-
-
     setStatus(
-      "Badge scanned. Looking up delegate..."
+      "Badge scanned. Checking delegate..."
     );
 
 
     /*
-    Stop camera after successful scan
+    Stop camera only after
+    a QR value has been captured.
     */
 
-    try {
-
-      html5QrcodeScanner.clear();
-
-    }
-
-    catch (error) {
-
-      console.log(
-        "Scanner clear:",
-        error
-      );
-
-    }
+    Promise.resolve(
+      html5QrcodeScanner.clear()
+    )
+    .catch(
+      error => {
+        console.log(
+          "Scanner clear:",
+          error
+        );
+      }
+    );
 
 
     lookupDelegate(
@@ -444,10 +602,7 @@
   function onScanFailure(error) {
 
     /*
-    Normal scan failures happen continuously
-    while camera is searching for QR code.
-
-    Do nothing here.
+    Ignore normal QR detection failures.
     */
 
   }
@@ -470,11 +625,13 @@
           true,
 
         supportedScanTypes: [
-          Html5QrcodeScanType.SCAN_TYPE_CAMERA
+          Html5QrcodeScanType
+          .SCAN_TYPE_CAMERA
         ]
       },
 
       false
+
     );
 
 
@@ -492,10 +649,17 @@
 
   function manualLookup() {
 
+    if (lookupInProgress) {
+      return;
+    }
+
+
     const email =
       document.getElementById(
         "manualEmail"
-      ).value.trim();
+      )
+      .value
+      .trim();
 
 
     if (!email) {
@@ -508,19 +672,25 @@
     }
 
 
-    lookupDelegate(email);
+    lookupDelegate(
+      email
+    );
 
   }
 
 
   /*
-  Allow ENTER key
+  ==================================================
+  ENTER KEY
+  ==================================================
   */
 
   document.getElementById(
     "manualEmail"
-  ).addEventListener(
+  )
+  .addEventListener(
     "keydown",
+
     function(event) {
 
       if (
@@ -534,9 +704,11 @@
       }
 
     }
+
   );
 
 </script>
 
 </body>
+
 </html>
