@@ -16,7 +16,6 @@
 
   <script src="https://unpkg.com/html5-qrcode"></script>
 
-
   <style>
 
     * {
@@ -56,14 +55,7 @@
       text-align: center;
       font-size: 24px;
       font-weight: bold;
-      margin-bottom: 20px;
-    }
-
-    #databaseStatus {
-      text-align: center;
-      font-size: 15px;
-      margin-bottom: 25px;
-      color: #555;
+      margin-bottom: 30px;
     }
 
     #reader {
@@ -156,10 +148,6 @@
 
   <div id="exhibitorDisplay">
     Exhibitor:
-  </div>
-
-  <div id="databaseStatus">
-    Loading delegate database...
   </div>
 
   <div id="reader"></div>
@@ -278,22 +266,9 @@ function setStatus(message) {
 
 
 
-function setDatabaseStatus(
-  message
-) {
-
-  document.getElementById(
-    "databaseStatus"
-  ).textContent =
-    message;
-
-}
-
-
-
 /*
 ==================================================
-LOAD SAVED LOCAL DATABASE IMMEDIATELY
+LOAD LOCAL DATABASE
 ==================================================
 */
 
@@ -332,39 +307,6 @@ function loadLocalDatabase() {
       parsed;
 
 
-    const savedTime =
-      localStorage.getItem(
-        LOCAL_DATABASE_TIME_KEY
-      );
-
-
-    if (savedTime) {
-
-      const date =
-        new Date(
-          Number(savedTime)
-        );
-
-
-      setDatabaseStatus(
-        Object.keys(
-          delegates
-        ).length +
-        " delegates ready • refreshing in background"
-      );
-
-    } else {
-
-      setDatabaseStatus(
-        Object.keys(
-          delegates
-        ).length +
-        " delegates ready"
-      );
-
-    }
-
-
     return true;
 
 
@@ -392,9 +334,6 @@ BACKGROUND DATABASE REFRESH
 
 function refreshDelegateDatabase() {
 
-  /*
-   * Remove previous script.
-   */
   if (databaseScript) {
 
     databaseScript.remove();
@@ -421,12 +360,8 @@ function refreshDelegateDatabase() {
   databaseScript.onerror =
     function() {
 
-      setDatabaseStatus(
-        Object.keys(
-          delegates
-        ).length
-          ? "Using saved delegate database"
-          : "Could not refresh delegate database"
+      console.log(
+        "Background delegate refresh failed."
       );
 
     };
@@ -450,9 +385,7 @@ window.receiveDelegateDatabase =
   function(result) {
 
 
-    if (
-      databaseScript
-    ) {
+    if (databaseScript) {
 
       databaseScript.remove();
 
@@ -500,14 +433,6 @@ window.receiveDelegateDatabase =
 
     }
 
-
-    setDatabaseStatus(
-      Object.keys(
-        delegates
-      ).length +
-      " delegates ready"
-    );
-
   };
 
 
@@ -541,8 +466,9 @@ function lookupDelegate(email) {
 
   /*
    * FAST PATH:
-   * Match directly on the phone.
+   * Match directly on this phone.
    */
+
   if (
     delegates[email]
   ) {
@@ -572,9 +498,9 @@ function lookupDelegate(email) {
 
 
   /*
-   * Delegate may have registered seconds ago.
-   * Use server only as fallback.
+   * Possible brand-new registration.
    */
+
   setStatus(
     "Checking new registration..."
   );
@@ -745,9 +671,9 @@ window.receiveFallbackDelegate =
 
 
     /*
-     * Add brand-new delegate immediately
-     * to phone database.
+     * Save newly registered delegate locally.
      */
+
     delegates[
       returnedEmail
     ] =
@@ -765,7 +691,9 @@ window.receiveFallbackDelegate =
 
     } catch (error) {
 
-      console.log(error);
+      console.log(
+        error
+      );
 
     }
 
@@ -940,7 +868,8 @@ function onScanFailure(
 ) {
 
   /*
-   * Ignore normal camera frames.
+   * Normal camera frames without
+   * a QR code are ignored.
    */
 
 }
@@ -1078,24 +1007,26 @@ STARTUP
 */
 
 /*
- * Use yesterday's/previously downloaded
- * delegate database immediately.
+ * Immediately use the delegate database
+ * already saved on this phone.
  */
+
 loadLocalDatabase();
 
 
 /*
- * Refresh in background immediately.
+ * Quietly fetch the newest database
+ * in the background.
  */
+
 refreshDelegateDatabase();
 
 
 /*
- * Keep checking for new registrations
+ * Quietly check for new registrations
  * every 30 seconds.
- *
- * This DOES NOT interrupt scanning.
  */
+
 setInterval(
   refreshDelegateDatabase,
   30000
