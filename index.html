@@ -1,449 +1,542 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
+  <title>DiBETSA 2026 Delegate Scanner</title>
 
-  <title>DiBETSA Delegate Scanner</title>
-
-
-  <script
-    src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js">
-  </script>
-
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
 
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
       padding: 20px;
-      background: #f5f6f8;
-      text-align: center;
+      background: #f4f5f8;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111;
     }
-
 
     .container {
-      max-width: 500px;
-      margin: 0 auto;
+      max-width: 700px;
+      margin: 20px auto;
       background: white;
-      padding: 25px;
-      border-radius: 15px;
-      box-shadow:
-        0 4px 18px rgba(0,0,0,0.10);
+      border-radius: 25px;
+      padding: 35px 25px;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.08);
     }
-
 
     h1 {
-      margin-bottom: 5px;
-      font-size: 28px;
+      text-align: center;
+      font-size: 42px;
+      margin: 10px 0 5px;
     }
 
-
-    h2 {
-      margin-top: 5px;
-      font-size: 20px;
-      font-weight: normal;
+    .subtitle {
+      text-align: center;
+      font-size: 30px;
+      margin: 0 0 25px;
     }
 
-
-    #exhibitorName {
+    #exhibitorDisplay {
+      text-align: center;
+      font-size: 24px;
       font-weight: bold;
-      margin-bottom: 20px;
+      margin-bottom: 35px;
     }
-
 
     #reader {
       width: 100%;
-      margin-top: 20px;
+      margin: auto;
     }
-
 
     #status {
-      margin-top: 20px;
+      text-align: center;
+      font-size: 22px;
       font-weight: bold;
+      margin: 30px 0;
+      min-height: 30px;
     }
 
-
-    .manual {
-      margin-top: 30px;
+    .divider {
       border-top: 1px solid #ddd;
-      padding-top: 20px;
+      margin: 35px 0;
     }
 
+    .manual-title {
+      text-align: center;
+      font-size: 22px;
+      margin-bottom: 25px;
+    }
 
     input {
-      width: 90%;
-      padding: 12px;
-      font-size: 16px;
-      margin-bottom: 10px;
+      width: 100%;
+      padding: 18px;
+      font-size: 20px;
       border: 1px solid #bbb;
-      border-radius: 7px;
+      border-radius: 12px;
+      margin-bottom: 20px;
     }
 
-
     button {
-      padding: 12px 20px;
-      font-size: 16px;
+      display: block;
+      margin: auto;
+      padding: 16px 35px;
+      font-size: 20px;
       border: none;
-      border-radius: 7px;
+      border-radius: 12px;
       cursor: pointer;
     }
 
+    button:hover {
+      opacity: 0.85;
+    }
+
+    @media (max-width: 600px) {
+
+      body {
+        padding: 12px;
+      }
+
+      .container {
+        padding: 25px 18px;
+      }
+
+      h1 {
+        font-size: 34px;
+      }
+
+      .subtitle {
+        font-size: 26px;
+      }
+
+      #exhibitorDisplay {
+        font-size: 21px;
+      }
+    }
   </style>
-
 </head>
-
 
 <body>
 
-
 <div class="container">
-
 
   <h1>DiBETSA 2026</h1>
 
-  <h2>Scan Delegate Badge</h2>
+  <div class="subtitle">
+    Scan Delegate Badge
+  </div>
 
-
-  <div id="exhibitorName"></div>
-
+  <div id="exhibitorDisplay">
+    Exhibitor:
+  </div>
 
   <div id="reader"></div>
-
 
   <div id="status">
     Ready to scan
   </div>
 
+  <div class="divider"></div>
 
-  <div class="manual">
-
-    <p>
-      Or enter delegate email manually
-    </p>
-
-
-    <input
-      type="email"
-      id="manualEmail"
-      placeholder="delegate@email.com"
-    >
-
-
-    <br>
-
-
-    <button onclick="manualLookup()">
-      Find Delegate
-    </button>
-
+  <div class="manual-title">
+    Or enter delegate email manually
   </div>
 
+  <input
+    type="email"
+    id="manualEmail"
+    placeholder="delegate@email.com"
+  >
+
+  <button onclick="manualLookup()">
+    Find Delegate
+  </button>
 
 </div>
 
 
-
 <script>
 
+  /*
+  ==================================================
+  SETTINGS
+  ==================================================
+  */
 
-const APPS_SCRIPT_URL =
-"https://script.google.com/macros/s/AKfycbzzRAf6Ab34ohsWS7YSZNAMvO2eFHZmNcJYZIhNnFP8qfdaXH5g_Fgber84A-xvcgfK/exec";
+  const APPS_SCRIPT_URL =
+    "https://script.google.com/macros/s/AKfycbzzRAf6Ab34ohsWS7YSZNAMvO2eFHZmNcJYZIhNnFP8qfdaXH5g_Fgber84A-xvcgfK/exec";
 
-
-const JOTFORM_URL =
-"https://form.jotform.com/262452140703043";
-
-
-const params =
-  new URLSearchParams(
-    window.location.search
-  );
+  const JOTFORM_URL =
+    "https://form.jotform.com/262452140703043";
 
 
-const exhibitor =
-  params.get("exhibitor") ||
-  "DiBETSA Exhibitor";
+  /*
+  ==================================================
+  GET EXHIBITOR
+  ==================================================
+  */
+
+  const params =
+    new URLSearchParams(
+      window.location.search
+    );
+
+  const exhibitor =
+    params.get("exhibitor") || "";
+
+  document.getElementById(
+    "exhibitorDisplay"
+  ).textContent =
+    "Exhibitor: " +
+    (exhibitor || "Not specified");
 
 
-document
-  .getElementById("exhibitorName")
-  .innerText =
-  "Exhibitor: " + exhibitor;
+  /*
+  ==================================================
+  STATUS
+  ==================================================
+  */
 
+  function setStatus(message) {
 
-let scanCompleted = false;
-
-
-
-function lookupDelegate(email) {
-
-
-  email =
-    String(email || "").trim();
-
-
-  if (!email) {
-
-    document
-      .getElementById("status")
-      .innerText =
-      "No delegate information detected.";
-
-    return;
+    document.getElementById(
+      "status"
+    ).textContent = message;
 
   }
 
 
-  if (scanCompleted) return;
+  /*
+  ==================================================
+  LOOK UP DELEGATE
+  ==================================================
+  */
+
+  async function lookupDelegate(email) {
+
+    email =
+      String(email || "")
+      .trim();
+
+    if (!email) {
+
+      setStatus(
+        "No delegate email detected."
+      );
+
+      return;
+    }
 
 
-  scanCompleted = true;
-
-
-  document
-    .getElementById("status")
-    .innerText =
-    "Looking up delegate...";
-
-
-  const oldScript =
-    document.getElementById(
-      "delegateLookupScript"
+    setStatus(
+      "Looking up delegate..."
     );
 
 
-  if (oldScript) {
-    oldScript.remove();
+    try {
+
+      const lookupURL =
+        APPS_SCRIPT_URL +
+        "?email=" +
+        encodeURIComponent(email) +
+        "&t=" +
+        Date.now();
+
+
+      const response =
+        await fetch(
+          lookupURL,
+          {
+            method: "GET",
+            cache: "no-store"
+          }
+        );
+
+
+      if (!response.ok) {
+
+        throw new Error(
+          "Lookup service returned " +
+          response.status
+        );
+
+      }
+
+
+      const data =
+        await response.json();
+
+
+      if (!data.success) {
+
+        setStatus(
+          data.message ||
+          "Delegate not found."
+        );
+
+        return;
+      }
+
+
+      setStatus(
+        "Delegate found. Opening lead form..."
+      );
+
+
+      /*
+      ==================================================
+      BUILD JOTFORM URL
+      ==================================================
+      */
+
+      const jotformParams =
+        new URLSearchParams();
+
+
+      jotformParams.set(
+        "fullName[first]",
+        data.firstName || ""
+      );
+
+
+      jotformParams.set(
+        "fullName[last]",
+        data.lastName || ""
+      );
+
+
+      jotformParams.set(
+        "company",
+        data.company || ""
+      );
+
+
+      jotformParams.set(
+        "jobTitle",
+        data.jobTitle || ""
+      );
+
+
+      jotformParams.set(
+        "email",
+        data.email || ""
+      );
+
+
+      jotformParams.set(
+        "phoneNumber",
+        data.phoneNumber || ""
+      );
+
+
+      jotformParams.set(
+        "country",
+        data.country || ""
+      );
+
+
+      jotformParams.set(
+        "city",
+        data.city || ""
+      );
+
+
+      jotformParams.set(
+        "exhibitor",
+        exhibitor
+      );
+
+
+      const finalURL =
+        JOTFORM_URL +
+        "?" +
+        jotformParams.toString();
+
+
+      /*
+      IMPORTANT:
+      GitHub performs the redirect directly.
+      Google Apps Script does NOT redirect to Jotform.
+      */
+
+      window.location.href =
+        finalURL;
+
+    }
+
+    catch (error) {
+
+      console.error(error);
+
+      setStatus(
+        "Could not retrieve delegate details. Please try again."
+      );
+
+    }
+
   }
 
 
-  const script =
-    document.createElement("script");
+  /*
+  ==================================================
+  QR SCANNER
+  ==================================================
+  */
+
+  let scanLocked = false;
 
 
-  script.id =
-    "delegateLookupScript";
-
-
-  script.src =
-    APPS_SCRIPT_URL +
-
-    "?email=" +
-    encodeURIComponent(email) +
-
-    "&callback=handleDelegate" +
-
-    "&_=" +
-    Date.now();
-
-
-  script.onerror =
-    function () {
-
-      scanCompleted = false;
-
-      document
-        .getElementById("status")
-        .innerText =
-        "Unable to retrieve delegate. Please try again.";
-
-    };
-
-
-  document.body.appendChild(script);
-
-}
-
-
-
-function handleDelegate(delegate) {
-
-
-  if (
-    !delegate ||
-    !delegate.success
+  function onScanSuccess(
+    decodedText,
+    decodedResult
   ) {
 
-    scanCompleted = false;
+    if (scanLocked) {
+      return;
+    }
 
-    document
-      .getElementById("status")
-      .innerText =
-      delegate && delegate.message
-        ? delegate.message
-        : "Delegate not found.";
 
-    return;
+    scanLocked = true;
+
+
+    const scannedValue =
+      String(decodedText || "")
+      .trim();
+
+
+    setStatus(
+      "Badge scanned. Looking up delegate..."
+    );
+
+
+    /*
+    Stop camera after successful scan
+    */
+
+    try {
+
+      html5QrcodeScanner.clear();
+
+    }
+
+    catch (error) {
+
+      console.log(
+        "Scanner clear:",
+        error
+      );
+
+    }
+
+
+    lookupDelegate(
+      scannedValue
+    );
 
   }
 
 
-  document
-    .getElementById("status")
-    .innerText =
-    "Delegate found. Opening lead form...";
+  function onScanFailure(error) {
+
+    /*
+    Normal scan failures happen continuously
+    while camera is searching for QR code.
+
+    Do nothing here.
+    */
+
+  }
 
 
-  const formParams =
-    new URLSearchParams();
+  const html5QrcodeScanner =
+    new Html5QrcodeScanner(
 
+      "reader",
 
-  formParams.append(
-    "fullName[first]",
-    delegate.firstName || ""
-  );
+      {
+        fps: 10,
 
+        qrbox: {
+          width: 250,
+          height: 250
+        },
 
-  formParams.append(
-    "fullName[last]",
-    delegate.lastName || ""
-  );
+        rememberLastUsedCamera:
+          true,
 
-
-  formParams.append(
-    "email",
-    delegate.email || ""
-  );
-
-
-  formParams.append(
-    "company",
-    delegate.company || ""
-  );
-
-
-  formParams.append(
-    "jobTitle",
-    delegate.jobTitle || ""
-  );
-
-
-  formParams.append(
-    "phoneNumber",
-    delegate.phoneNumber || ""
-  );
-
-
-  formParams.append(
-    "city",
-    delegate.city || ""
-  );
-
-
-  formParams.append(
-    "country",
-    delegate.country || ""
-  );
-
-
-  formParams.append(
-    "exhibitor",
-    exhibitor
-  );
-
-
-  const destination =
-    JOTFORM_URL +
-    "?" +
-    formParams.toString();
-
-
-  // DIRECT navigation from GitHub to Jotform.
-  // Google Apps Script is no longer performing
-  // the redirect.
-
-  window.location.replace(
-    destination
-  );
-
-}
-
-
-
-function onScanSuccess(
-  decodedText
-) {
-
-  lookupDelegate(
-    decodedText
-  );
-
-}
-
-
-
-function onScanFailure(error) {
-
-  // Continue scanning silently.
-
-}
-
-
-
-const scanner =
-  new Html5QrcodeScanner(
-
-    "reader",
-
-    {
-
-      fps: 10,
-
-      qrbox: {
-        width: 250,
-        height: 250
+        supportedScanTypes: [
+          Html5QrcodeScanType.SCAN_TYPE_CAMERA
+        ]
       },
 
-      rememberLastUsedCamera:
-        true,
+      false
+    );
 
-      supportedScanTypes: [
 
-        Html5QrcodeScanType
-          .SCAN_TYPE_CAMERA
-
-      ]
-
-    },
-
-    false
-
+  html5QrcodeScanner.render(
+    onScanSuccess,
+    onScanFailure
   );
 
 
-scanner.render(
-  onScanSuccess,
-  onScanFailure
-);
+  /*
+  ==================================================
+  MANUAL LOOKUP
+  ==================================================
+  */
 
+  function manualLookup() {
 
-
-function manualLookup() {
-
-  const email =
-    document
-      .getElementById(
+    const email =
+      document.getElementById(
         "manualEmail"
-      )
-      .value;
+      ).value.trim();
 
 
-  lookupDelegate(email);
+    if (!email) {
 
-}
+      setStatus(
+        "Please enter the delegate email."
+      );
 
+      return;
+    }
+
+
+    lookupDelegate(email);
+
+  }
+
+
+  /*
+  Allow ENTER key
+  */
+
+  document.getElementById(
+    "manualEmail"
+  ).addEventListener(
+    "keydown",
+    function(event) {
+
+      if (
+        event.key === "Enter"
+      ) {
+
+        event.preventDefault();
+
+        manualLookup();
+
+      }
+
+    }
+  );
 
 </script>
 
-
 </body>
-
 </html>
