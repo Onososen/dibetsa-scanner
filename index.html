@@ -56,7 +56,14 @@
       text-align: center;
       font-size: 24px;
       font-weight: bold;
-      margin-bottom: 35px;
+      margin-bottom: 20px;
+    }
+
+    #databaseStatus {
+      text-align: center;
+      font-size: 15px;
+      margin-bottom: 25px;
+      color: #555;
     }
 
     #reader {
@@ -151,6 +158,10 @@
     Exhibitor:
   </div>
 
+  <div id="databaseStatus">
+    Loading delegate database...
+  </div>
+
   <div id="reader"></div>
 
   <div id="status">
@@ -197,10 +208,18 @@ const JOTFORM_URL =
   "https://form.jotform.com/262452140703043";
 
 
+const LOCAL_DATABASE_KEY =
+  "DIBETSA_DELEGATE_DATABASE_V1";
+
+
+const LOCAL_DATABASE_TIME_KEY =
+  "DIBETSA_DELEGATE_DATABASE_TIME_V1";
+
+
 
 /*
 ==================================================
-GET EXHIBITOR
+EXHIBITOR
 ==================================================
 */
 
@@ -224,6 +243,26 @@ document.getElementById(
 
 /*
 ==================================================
+STATE
+==================================================
+*/
+
+let delegates = {};
+
+let scanLocked = false;
+
+let lookupInProgress = false;
+
+let databaseScript = null;
+
+let fallbackScript = null;
+
+let requestedFallbackEmail = "";
+
+
+
+/*
+==================================================
 STATUS
 ==================================================
 */
@@ -239,27 +278,243 @@ function setStatus(message) {
 
 
 
+function setDatabaseStatus(
+  message
+) {
+
+  document.getElementById(
+    "databaseStatus"
+  ).textContent =
+    message;
+
+}
+
+
+
 /*
 ==================================================
-LOOKUP STATE
+LOAD SAVED LOCAL DATABASE IMMEDIATELY
 ==================================================
 */
 
-let lookupInProgress = false;
+function loadLocalDatabase() {
 
-let scanLocked = false;
+  try {
 
-let jsonpScript = null;
+    const saved =
+      localStorage.getItem(
+        LOCAL_DATABASE_KEY
+      );
 
-let lookupTimer = null;
 
-let requestedEmail = "";
+    if (!saved) {
+
+      return false;
+
+    }
+
+
+    const parsed =
+      JSON.parse(saved);
+
+
+    if (
+      !parsed ||
+      typeof parsed !== "object"
+    ) {
+
+      return false;
+
+    }
+
+
+    delegates =
+      parsed;
+
+
+    const savedTime =
+      localStorage.getItem(
+        LOCAL_DATABASE_TIME_KEY
+      );
+
+
+    if (savedTime) {
+
+      const date =
+        new Date(
+          Number(savedTime)
+        );
+
+
+      setDatabaseStatus(
+        Object.keys(
+          delegates
+        ).length +
+        " delegates ready • refreshing in background"
+      );
+
+    } else {
+
+      setDatabaseStatus(
+        Object.keys(
+          delegates
+        ).length +
+        " delegates ready"
+      );
+
+    }
+
+
+    return true;
+
+
+  } catch (error) {
+
+    console.log(
+      "Local database error:",
+      error
+    );
+
+
+    return false;
+
+  }
+
+}
 
 
 
 /*
 ==================================================
-LOOK UP DELEGATE
+BACKGROUND DATABASE REFRESH
+==================================================
+*/
+
+function refreshDelegateDatabase() {
+
+  /*
+   * Remove previous script.
+   */
+  if (databaseScript) {
+
+    databaseScript.remove();
+
+    databaseScript = null;
+
+  }
+
+
+  databaseScript =
+    document.createElement(
+      "script"
+    );
+
+
+  databaseScript.src =
+    APPS_SCRIPT_URL +
+    "?action=delegates" +
+    "&callback=receiveDelegateDatabase" +
+    "&_=" +
+    Date.now();
+
+
+  databaseScript.onerror =
+    function() {
+
+      setDatabaseStatus(
+        Object.keys(
+          delegates
+        ).length
+          ? "Using saved delegate database"
+          : "Could not refresh delegate database"
+      );
+
+    };
+
+
+  document.body.appendChild(
+    databaseScript
+  );
+
+}
+
+
+
+/*
+==================================================
+DATABASE CALLBACK
+==================================================
+*/
+
+window.receiveDelegateDatabase =
+  function(result) {
+
+
+    if (
+      databaseScript
+    ) {
+
+      databaseScript.remove();
+
+      databaseScript = null;
+
+    }
+
+
+    if (
+      !result ||
+      !result.success ||
+      !result.delegates
+    ) {
+
+      return;
+
+    }
+
+
+    delegates =
+      result.delegates;
+
+
+    try {
+
+      localStorage.setItem(
+        LOCAL_DATABASE_KEY,
+        JSON.stringify(
+          delegates
+        )
+      );
+
+
+      localStorage.setItem(
+        LOCAL_DATABASE_TIME_KEY,
+        Date.now().toString()
+      );
+
+    } catch (error) {
+
+      console.log(
+        "Could not save local database:",
+        error
+      );
+
+    }
+
+
+    setDatabaseStatus(
+      Object.keys(
+        delegates
+      ).length +
+      " delegates ready"
+    );
+
+  };
+
+
+
+/*
+==================================================
+LOCAL LOOKUP
 ==================================================
 */
 
@@ -284,107 +539,50 @@ function lookupDelegate(email) {
   }
 
 
-  if (lookupInProgress) {
+  /*
+   * FAST PATH:
+   * Match directly on the phone.
+   */
+  if (
+    delegates[email]
+  ) {
+
+    const delegate =
+      delegates[email];
+
+
+    setStatus(
+      "Delegate found: " +
+      (
+        delegate.fullName ||
+        delegate.firstName ||
+        delegate.email
+      )
+    );
+
+
+    openLeadForm(
+      delegate
+    );
+
+
     return;
+
   }
 
 
-  lookupInProgress = true;
-
-  scanLocked = true;
-
-  requestedEmail = email;
-
-
+  /*
+   * Delegate may have registered seconds ago.
+   * Use server only as fallback.
+   */
   setStatus(
-    "Looking up delegate..."
+    "Checking new registration..."
   );
 
 
-  /*
-   * Remove any previous lookup script.
-   */
-
-  if (jsonpScript) {
-
-    jsonpScript.remove();
-
-    jsonpScript = null;
-
-  }
-
-
-  /*
-   * Cancel previous timeout.
-   */
-
-  if (lookupTimer) {
-
-    clearTimeout(
-      lookupTimer
-    );
-
-    lookupTimer = null;
-
-  }
-
-
-  /*
-   * Create JSONP request.
-   *
-   * This avoids cross-origin FETCH problems
-   * between GitHub and Google Apps Script.
-   */
-
-  jsonpScript =
-    document.createElement(
-      "script"
-    );
-
-
-  jsonpScript.src =
-    APPS_SCRIPT_URL +
-    "?email=" +
-    encodeURIComponent(email) +
-    "&callback=handleDelegate" +
-    "&requestId=" +
-    Date.now();
-
-
-  jsonpScript.onerror =
-    function() {
-
-      lookupFailed(
-        "Unable to contact the delegate database. Please scan again."
-      );
-
-    };
-
-
-  document.body.appendChild(
-    jsonpScript
+  lookupDelegateOnline(
+    email
   );
-
-
-  /*
-   * Never allow the screen to remain
-   * stuck on Looking up delegate.
-   */
-
-  lookupTimer =
-    setTimeout(
-
-      function() {
-
-        lookupFailed(
-          "Lookup took too long. Please scan again."
-        );
-
-      },
-
-      12000
-
-    );
 
 }
 
@@ -392,70 +590,136 @@ function lookupDelegate(email) {
 
 /*
 ==================================================
-GLOBAL JSONP CALLBACK
-==================================================
-
-Important:
-Apps Script calls this function directly.
-
-Using window.handleDelegate makes the callback
-available globally to the Google response.
+ONLINE FALLBACK
 ==================================================
 */
 
-window.handleDelegate =
-  function(data) {
+function lookupDelegateOnline(
+  email
+) {
+
+  if (
+    lookupInProgress
+  ) {
+
+    return;
+
+  }
 
 
-    if (lookupTimer) {
+  lookupInProgress =
+    true;
 
-      clearTimeout(
-        lookupTimer
+
+  requestedFallbackEmail =
+    email;
+
+
+  if (
+    fallbackScript
+  ) {
+
+    fallbackScript.remove();
+
+    fallbackScript = null;
+
+  }
+
+
+  fallbackScript =
+    document.createElement(
+      "script"
+    );
+
+
+  fallbackScript.src =
+    APPS_SCRIPT_URL +
+    "?email=" +
+    encodeURIComponent(
+      email
+    ) +
+    "&callback=receiveFallbackDelegate" +
+    "&_=" +
+    Date.now();
+
+
+  fallbackScript.onerror =
+    function() {
+
+
+      lookupInProgress =
+        false;
+
+
+      scanLocked =
+        false;
+
+
+      setStatus(
+        "Delegate not found. Please try again."
       );
 
-      lookupTimer = null;
-
-    }
+    };
 
 
-    if (jsonpScript) {
+  document.body.appendChild(
+    fallbackScript
+  );
 
-      jsonpScript.remove();
-
-      jsonpScript = null;
-
-    }
+}
 
 
-    /*
-     * Delegate not found.
-     */
+
+/*
+==================================================
+ONLINE FALLBACK CALLBACK
+==================================================
+*/
+
+window.receiveFallbackDelegate =
+  function(delegate) {
+
 
     if (
-      !data ||
-      !data.success
+      fallbackScript
     ) {
 
-      lookupFailed(
-        data &&
-        data.message
-          ? data.message
+      fallbackScript.remove();
+
+      fallbackScript = null;
+
+    }
+
+
+    lookupInProgress =
+      false;
+
+
+    if (
+      !delegate ||
+      !delegate.success
+    ) {
+
+      scanLocked =
+        false;
+
+
+      setStatus(
+        delegate &&
+        delegate.message
+          ? delegate.message
           : "Delegate not found."
       );
+
 
       return;
 
     }
 
 
-    /*
-     * Confirm Google returned the
-     * same email that was scanned.
-     */
-
     const returnedEmail =
       String(
-        data.email || ""
+        delegate.email || ""
       )
       .trim()
       .toLowerCase();
@@ -463,77 +727,54 @@ window.handleDelegate =
 
     if (
       returnedEmail !==
-      requestedEmail
+      requestedFallbackEmail
     ) {
 
-      lookupFailed(
-        "The lookup returned a different delegate. Please scan again."
+      scanLocked =
+        false;
+
+
+      setStatus(
+        "Delegate mismatch. Please scan again."
       );
+
 
       return;
 
     }
 
 
-    setStatus(
-      "Delegate found: " +
-      (
-        data.fullName ||
-        data.firstName ||
-        data.email
-      ) +
-      ". Opening lead form..."
-    );
+    /*
+     * Add brand-new delegate immediately
+     * to phone database.
+     */
+    delegates[
+      returnedEmail
+    ] =
+      delegate;
+
+
+    try {
+
+      localStorage.setItem(
+        LOCAL_DATABASE_KEY,
+        JSON.stringify(
+          delegates
+        )
+      );
+
+    } catch (error) {
+
+      console.log(error);
+
+    }
 
 
     openLeadForm(
-      data
+      delegate
     );
 
   };
-
-
-
-/*
-==================================================
-LOOKUP FAILURE
-==================================================
-*/
-
-function lookupFailed(message) {
-
-  if (lookupTimer) {
-
-    clearTimeout(
-      lookupTimer
-    );
-
-    lookupTimer = null;
-
-  }
-
-
-  if (jsonpScript) {
-
-    jsonpScript.remove();
-
-    jsonpScript = null;
-
-  }
-
-
-  lookupInProgress = false;
-
-  scanLocked = false;
-
-  requestedEmail = "";
-
-
-  setStatus(
-    message
-  );
-
-}
 
 
 
@@ -543,7 +784,9 @@ OPEN JOTFORM
 ==================================================
 */
 
-function openLeadForm(data) {
+function openLeadForm(
+  data
+) {
 
   const jotformParams =
     new URLSearchParams();
@@ -621,10 +864,6 @@ function openLeadForm(data) {
   );
 
 
-  /*
-   * Unique value for every scan.
-   */
-
   jotformParams.set(
     "_scan",
     Date.now().toString()
@@ -636,11 +875,6 @@ function openLeadForm(data) {
     "?" +
     jotformParams.toString();
 
-
-  /*
-   * Go immediately to Jotform.
-   * No extra artificial delay.
-   */
 
   window.location.replace(
     finalURL
@@ -675,7 +909,8 @@ function onScanSuccess(
     String(
       decodedText || ""
     )
-    .trim();
+    .trim()
+    .toLowerCase();
 
 
   if (!scannedValue) {
@@ -683,22 +918,14 @@ function onScanSuccess(
   }
 
 
-  scanLocked = true;
+  scanLocked =
+    true;
 
 
   setStatus(
-    "Badge scanned. Checking delegate..."
+    "Badge scanned..."
   );
 
-
-  /*
-   * Keep the camera alive while the lookup runs.
-   *
-   * scanLocked prevents the same QR from
-   * triggering repeatedly.
-   *
-   * If lookup fails, we simply unlock scanning.
-   */
 
   lookupDelegate(
     scannedValue
@@ -708,11 +935,12 @@ function onScanSuccess(
 
 
 
-function onScanFailure(error) {
+function onScanFailure(
+  error
+) {
 
   /*
-   * Normal camera frames that do not
-   * contain a QR code are ignored.
+   * Ignore normal camera frames.
    */
 
 }
@@ -732,7 +960,7 @@ const html5QrcodeScanner =
 
     {
 
-      fps: 12,
+      fps: 15,
 
       qrbox: {
         width: 250,
@@ -765,7 +993,7 @@ html5QrcodeScanner.render(
 
 /*
 ==================================================
-MANUAL EMAIL LOOKUP
+MANUAL LOOKUP
 ==================================================
 */
 
@@ -785,7 +1013,8 @@ function manualLookup() {
       "manualEmail"
     )
     .value
-    .trim();
+    .trim()
+    .toLowerCase();
 
 
   if (!email) {
@@ -797,6 +1026,10 @@ function manualLookup() {
     return;
 
   }
+
+
+  scanLocked =
+    true;
 
 
   lookupDelegate(
@@ -834,6 +1067,38 @@ document.getElementById(
 
   }
 
+);
+
+
+
+/*
+==================================================
+STARTUP
+==================================================
+*/
+
+/*
+ * Use yesterday's/previously downloaded
+ * delegate database immediately.
+ */
+loadLocalDatabase();
+
+
+/*
+ * Refresh in background immediately.
+ */
+refreshDelegateDatabase();
+
+
+/*
+ * Keep checking for new registrations
+ * every 30 seconds.
+ *
+ * This DOES NOT interrupt scanning.
+ */
+setInterval(
+  refreshDelegateDatabase,
+  30000
 );
 
 
